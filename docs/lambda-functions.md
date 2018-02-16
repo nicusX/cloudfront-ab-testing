@@ -6,7 +6,7 @@ This part has not been implemented yet.
 
 ## Viewer Request
 
-This Lambda processes every request.
+This function processes every request.
 
 Looks for `X-Source` cookie. 
 If missing, roll dice and add an `X-Source` cookie to the request, either valued `main` or `experiment`.
@@ -14,9 +14,12 @@ If missing, roll dice and add an `X-Source` cookie to the request, either valued
 The cookie becomes part of the cache key.
 If a version of the content for the content from the specified source is already available in the cache, it is considered a Cache Hit.
 
+[Source](../lambda/viewer-request/index.js)
+
+
 ## Origin Request
 
-This Lambda processes only cache misses. 
+This function processes only cache misses. 
 It allows to replace the Origin to be used.
 
 Looks for `X-Source` cookie.
@@ -28,10 +31,12 @@ If the `Host` header does not match the Origin, CloudFront returns an error: *â€
 This function supports **S3 Bucket Origin only**, not Custom origin to S3 Static Website hosting endpoint.
 The solution probably works sith Custom origin as well, but I haven't tested it.
 
+[Source](../lambda/origin-request/index.js)
+
 
 ## Origin Response
 
-This Lambda processes responses from an Origin on cache misses.
+This function processes responses from an Origin on cache misses.
 The resulting response is cached by CloudFront.
 
 If the browser does not have a `X-Source` cookie, it is added to the request by *Viewer Request* Lambda@Edge.
@@ -41,10 +46,16 @@ The response from the Origin is modified, adding a `Set-Cookie` header, setting 
 
 The `Set-Cookie` beconmes part of the cached response.
 
+[Source](../lambda/origin-response/index.js)
+
 ## Event Logger
+
+[Source](../lambda/event-logger/index.js)
 
 This function is for troubleshooting only.
 
 It may be attached to any Request or Response trigger to log the event.
 
 Use `index.requestInterceptor` as handler for * Request triggers, and `index.responseInterceptor` for * Response triggers.
+
+[Source](../lambda/event-logger/index.js)
