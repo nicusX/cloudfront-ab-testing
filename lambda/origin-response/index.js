@@ -3,6 +3,7 @@
 const sourceCoookie = 'X-Source';
 const sourceMain = 'main';
 const sourceExperiment = 'experiment';
+const cookiePath = '/';
 
 
 
@@ -48,10 +49,11 @@ exports.handler = (event, context, callback) => {
     forwardResponse(response, callback);
 }
 
-// Add set-cookie header
+// Add set-cookie header (including path)
 const setCookie = function(response, cookie) {
-    console.log(`Setting cookie ${cookie}`);
-    response.headers['set-cookie'] = [{ key: "Set-Cookie", value: cookie }];    
+    const cookieValue = `${cookie}; Path=${cookiePath}`;
+    console.log(`Setting cookie ${cookieValue}`);
+    response.headers['set-cookie'] = [{ key: "Set-Cookie", value: cookieValue }];    
 }
 
 // Forward response
