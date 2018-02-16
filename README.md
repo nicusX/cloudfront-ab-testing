@@ -52,3 +52,60 @@ AFAIK there is no way to know the state of Lambda distribution, by AWS CLI or Co
 
 Note that this issue practically prevents from using any stateful infrastructure automation tool, like [Terraform](https://github.com/terraform-providers/terraform-provider-aws/issues/1721) or CloudFormation, to deploy Lamda@Edge.
 
+## How it should work
+
+The goal is keeping the served version stable with `X-Source` cookie. 
+As content is served by S3 bucket the cookie cannot be added by the server.
+
+### CloudFront Distribution
+
+Two Origins: `main` and `experiment`, pointing to two different S3 buckets.
+Note that Origin names are irrelevant. They do not need to match with names used in `X-Source` cookie.
+
+*Default(*)* Behaviour:  Forward Cookies = Whitelist (`X-Source`).
+
+Forwarding `X-Source` has two effects:
+- Forwards it to the Origin. S3 actually ignores it.
+- **Makes the `X-Source` cookie part of the cache key**, along with the object URI
+
+Other Behaviour settings are not relevant. Cache TTL may be set to any value.
+
+
+**TODO** Verify if the `experiment` Origin must be specified in Distribution config.
+
+### Lambda@Edge
+
+The following Lambdas must be associated to the *Default* Behaviour of the CF Distribution:
+
+#### Viewer Request
+
+This Lambda processes every request.
+
+Looks for `X-Source` cookie. 
+If missing, roll dice and add an `X-Source` cookie to the request, either valued `main` or `experiment`.
+
+The cookie becomes part of the cache key.
+If a version of the content for the content from the specified source is already available in the cache, it is considered a Cache Hit.
+
+#### Origin Request
+
+This Lambda processes only cache misses. 
+It allows to replace the Origin to be used.
+
+Looks for `X-Source` cookie.
+If present and set to `experiment`, the request *Origin* is replaced with the Experiment S3 bucket.
+
+The `Host` header is also replaced to match the new bucket name. 
+If the `Host` header does not match the Origin, CloudFront returns an error: *“The request signature we calculated does not match the signature you provided”*
+
+#### Origin Response
+
+This Lambda processes responses from an Origin on cache misses.
+The resulting response is cached by CloudFront.
+
+If the browser does not have a `X-Source` cookie, it is added to the request by *Viewer Request* Lambda@Edge.
+To keep the browser stable on a version we have to set the cookie in the browser.
+
+The response from the Origin is modified, adding a `Set-Cookie` header, setting `X-Source` to the approprirate value, matching the request.
+
+The `Set-Cookie` beconmes part of the cached response.

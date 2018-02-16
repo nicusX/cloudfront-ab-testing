@@ -1,0 +1,118 @@
+{
+    "Records": [
+        {
+            "cf": {
+                "config": {
+                    "distributionId": "EDFDVBD6EXAMPLE"
+                },
+                "request": {
+                    "clientIp": "123.123.123.123",
+                    "headers": {
+                        "cookie": [
+                            {
+                                "key": "Cookie",
+                                "value": "SomeCookie=1; AnotherOne=A"
+                            }
+                        ],
+                        "host": [
+                            {
+                                "key": "Host",
+                                "value": "main-bucket-name"
+                            }
+                        ],
+                        "user-agent": [
+                            {
+                                "key": "User-Agent",
+                                "value": "Amazon CloudFront"
+                            }
+                        ],
+                        "via": [
+                            {
+                                "key": "Via",
+                                "value": "1.1 123456.cloudfront.net (CloudFront)"
+                            }
+                        ],
+                        "x-forwarded-for": [
+                            {
+                                "key": "X-Forwarded-For",
+                                "value": "123.123.123.123"
+                            }
+                        ]
+                    },
+                    "method": "GET",
+                    "origin": {
+                        "s3": {
+                            "authMethod": "origin-access-identity",
+                            "customHeaders": {},
+                            "domainName": "main-bucket-name",
+                            "path": "",
+                            "region": "eu-west-1"
+                        }
+                    },
+                    "querystring": "",
+                    "uri": "/index.html"
+                },
+                "response": {
+                    "headers": {
+                        "accept-ranges": [
+                            {
+                                "key": "Accept-Ranges",
+                                "value": "bytes"
+                            }
+                        ],
+                        "content-length": [
+                            {
+                                "key": "Content-Length",
+                                "value": "253"
+                            }
+                        ],
+                        "content-type": [
+                            {
+                                "key": "Content-Type",
+                                "value": "text/html"
+                            }
+                        ],
+                        "date": [
+                            {
+                                "key": "Date",
+                                "value": "Thu, 15 Feb 2018 17:13:10 GMT"
+                            }
+                        ],
+                        "etag": [
+                            {
+                                "key": "ETag",
+                                "value": "\"b858f7b3b9db24be851331bef6d0b7d5\""
+                            }
+                        ],
+                        "last-modified": [
+                            {
+                                "key": "Last-Modified",
+                                "value": "Thu, 15 Feb 2018 15:16:17 GMT"
+                            }
+                        ],
+                        "server": [
+                            {
+                                "key": "Server",
+                                "value": "AmazonS3"
+                            }
+                        ],
+                        "x-amz-id-2": [
+                            {
+                                "key": "x-amz-id-2",
+                                "value": "nfoub/0/2bsdoZF5mavjYcilfSlo3yaelrVm87gyqTPAW/v4ZzEvGj+1v0D+SPLonJFXPua4Dyo="
+                            }
+                        ],
+                        "x-amz-request-id": [
+                            {
+                                "key": "x-amz-request-id",
+                                "value": "79ACEC82F512A9D4"
+                            }
+                        ]
+                    },
+                    "status": "200",
+                    "statusDescription": "OK"
+                }
+            }
+        }
+    ]
+}
