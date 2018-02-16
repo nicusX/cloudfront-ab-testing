@@ -1,10 +1,12 @@
-# Server-side A/B testing with CloudFront & Lambda@Edge
+# A/B testing with CloudFront & Lambda@Edge
 
-Scratch code for experimenting with Lambda@Edge for implementing A/B testing on CloudFront, serving a static website from S3.
+Example code for implementing A/B testing on CloudFront using Lambda@Edge.
 
-**This is a WIP. Far from a working solution**.
+Particularly, switching between different versions of content is done by the CDN, as opposed to other solutions doing it client side, or server side. These solutions imply either modifying the client or server code. Something that might be not advisable or not possible,
 
-Many parts of the solution are still manual and missing from this code.
+**This is not a complete solution**.
+
+Setup and deploy is manual, confifiguration is hardwired in Lambda function codes.
 
 ## Scenario
 
@@ -27,95 +29,138 @@ You do not want to have content randomly served from diferent versions at each r
 
 ## How it works
 
-We want to keep the served version stable with `X-Source` cookie. 
+We want to keep the served version stable with a cookie, `X-Source` (but the cookie name may be changed). 
 As content is served by S3 bucket the cookie cannot be added by the server.
 So the idea is adding a `Set-Cookie` to every response.
 
+CloudFront caches both versions of the content.
 
-### CloudFront Distribution
+Note that the solutions suggested by [this example](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/lambda-examples.html#lambda-examples-a-b-testing) and [this example](https://aws.amazon.com/blogs/networking-and-content-delivery/dynamically-route-viewer-requests-to-any-origin-using-lambdaedge/) require something external to set the cookie that decides the version. 
+Otherwise, every request may get a different version of the content.
 
-Two Origins: `main` and `experiment`, pointing to two different S3 buckets.
-Note that Origin names are irrelevant. They do not need to match with names used in `X-Source` cookie.
+CloudFront has two Origins, one for the main version and another for the experiment.
+By default, the main version is served, but Lambda@Edge may intercept requests and switch to a different Origin.
 
-*Default(*)* Behaviour:  Forward Cookies = Whitelist (`X-Source`).
+This is how serving a request works:
 
-Forwarding `X-Source` has two effects:
-- Forwards it to the Origin. S3 actually ignores it.
-- **Makes the `X-Source` cookie part of the cache key**, along with the object URI
+1. The browser request hits CloudFront Edge location
+2. A *Viewer Request* Lambda@Edge function check if the `X-Cookie` is present. If not, rolls dice and dicides to decide which version and adds the cookie to the request, accordingly
+3. CloudFront Distribution decides whether it's a cache-it, including the `X-Cookie` in the cache key.
+4. A cache hit is served immediatly from the cache. It contains a `Set-Cookie` response header, in chase the browser doesn't have the cookie yet
+5. A cache miss is handed to the *Origin Request* Lambda@Edge function. If the `X-Cookie` target the Experiment, the Origin of the request is changed to the Experiment S3 Bucket, otherwise remain unchaged, pointing the Main S3 Bucket.
+6. The content is served by the selected Origin. S3 igores cookies
+7. The response (and the request) are passed to the *Origin Response* function, that adds a `Set-Cookie` response header to make it sure the browser will send the correct cookie on following requests and receives the same version on following requests
+8. The decorated response, including the `Set-Cookie` response header is cached by CloudFront Distribution
+9. The response is returned to the browser. 
+10. The browser set the cookie and send it on every new request
 
-Other Behaviour settings are not relevant. Cache TTL may be set to any value.
-
-
-**TODO** Verify if the `experiment` Origin must be specified in Distribution config.
-
-### Lambda@Edge
 
 ```
-        ---> [ Viewer Request ] --> |       | -- miss --> [ Origin Request  ] ------+
-                                                                                    |
-Browser <----------------- hit ---- | cache |                                     Origin
-                                                                                    |
-        <-------------------------- |       | <---------- [ Origin Response ] <-----+                        
+        (1) ---> [(2) Viewer Request ] ---> |       | --- miss --> [(5) Origin Request ] ----------
+                                            |  CDN  |                                              
+Browser <----------------- hit (4) -------- |       |                                               Origin
+                                            | cache |                                              
+  (10)  <--------------- (9) -------------- |       | (8) <--- [ Origin Response (7) ] <--- (6) ---                        
 ```
 
+### Further information
+* [Settings and configuration](docs/settings.md): more details about configurations.
+* [Lambda functions](docs/lambda-functions.md): more details about functions.
+* [Switching A/B testing on and off](docs/switching-testing.md): how to switch on and off A/B testing in production, without impacting users.
 
-#### Viewer Request
+## Useful docs and examples
 
-This Lambda processes every request.
-
-Looks for `X-Source` cookie. 
-If missing, roll dice and add an `X-Source` cookie to the request, either valued `main` or `experiment`.
-
-The cookie becomes part of the cache key.
-If a version of the content for the content from the specified source is already available in the cache, it is considered a Cache Hit.
-
-#### Origin Request
-
-This Lambda processes only cache misses. 
-It allows to replace the Origin to be used.
-
-Looks for `X-Source` cookie.
-If present and set to `experiment`, the request *Origin* is replaced with the Experiment S3 bucket.
-
-The `Host` header is also replaced to match the new bucket name. 
-If the `Host` header does not match the Origin, CloudFront returns an error: *“The request signature we calculated does not match the signature you provided”*
-
-#### Origin Response
-
-This Lambda processes responses from an Origin on cache misses.
-The resulting response is cached by CloudFront.
-
-If the browser does not have a `X-Source` cookie, it is added to the request by *Viewer Request* Lambda@Edge.
-To keep the browser stable on a version we have to set the cookie in the browser.
-
-The response from the Origin is modified, adding a `Set-Cookie` header, setting `X-Source` to the approprirate value, matching the request.
-
-The `Set-Cookie` beconmes part of the cached response.
-
-
-## Reference documentation and examples
-
-Documentation is quite sparse. Examples are naive.
-
-### Docs
+Documentation is quite sparse. Examples are naive...
 
 * [AWS Lambda Developer Guide - Lambda@Edge](https://docs.aws.amazon.com/lambda/latest/dg/lambda-edge.html)
 * [AWS CloudFront Developer Guide - Lambda@Edge](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/lambda-at-the-edge.html)
-
-
-### Examples
-
 * [AWS Lambda@Edge docs - Example: A/B Testing](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/lambda-examples.html#lambda-examples-a-b-testing)
 * [Dynamically Route Viewer Requests to Any Origin Using Lambda@Edge](https://aws.amazon.com/blogs/networking-and-content-delivery/dynamically-route-viewer-requests-to-any-origin-using-lambdaedge/)
 * [How to supercharge your static website with the power of AWS Lambda@Edge](https://read.acloud.guru/supercharging-a-static-site-with-lambda-edge-da5a1314238b)
 
 
-## Known Issues
+## Known issue of Lamnda@Edge
 
 [Replicated Lambda@Edge cannot be deleted](https://forums.aws.amazon.com/thread.jspa?threadID=260242) (i.e. Lambda associated with CloudFront Distributions as Lambda@Edge).
 
-You have to remove the trigger from the CF Distribution first. Then, you have to wait until the Lambda is completely removed from the CDN (it took about 24 hrs for me) before being able to delete the Lambda.
+At the time of writing, you have to remove the trigger from the CloudFront Distribution and wait untile the function is completely removed from the CDN, before being able to delete the Lambda.
+I saw it takes between 30 mins to 24 hours and AFAIK there is no way of checking the state with AWS CLI or Console. So you may just wait and retry.
 
-AFAIK there is no way to know the state of Lambda distribution, by AWS CLI or Console. So just wait and retry...
+Note that this issue practically prevents from using any stateful infrastructure automation tool to deploy Lamda@Edge, like [Terraform](https://github.com/terraform-providers/terraform-provider-aws/issues/1721), unless you completely separate deployment of Lambda function and attaching them to CloudFront triggers.
 
-Note that this issue practically prevents from using any stateful infrastructure automation tool, like [Terraform](https://github.com/terraform-providers/terraform-provider-aws/issues/1721) or CloudFormation, to deploy Lamda@Edge.
+## Some gotchas!
+
+At the time of writing (15-Feb-2018) the documentation about Lambda@Edge is very sparse, to use an euphemisim, and all examples are trivial.
+
+Here are some gotchas I got breaking my head in a cut&try process.
+Note that some of them might not be true in the future, as Lambda@Edge are rapidly evolving.
+
+#### Only N.Virginia AWS Region
+
+Lambdas must be created in `us-east-1` Region to be used as Lambda@Edge.
+
+#### No environment for Lambda@Edge
+
+As described in the [CloudFront Developer Giude](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/lambda-requirements-limits.html#lambda-requirements-lambda-function-configuration) Lambda@Edge do not support Environment Variables.
+
+The strong implication is you cannot parametrise functions. Every parameter should be hardwired in the code you deploy.
+
+#### Only numbered Lambda versions
+
+Only numbered-versions of Lambda may be attached to CloudFront (i.e. no `$LATEST`).
+So, a Lambda must be publised before being able to attach it to a CloudFront Behaviour event.
+
+#### Logs from Lambdas
+
+Lambda@Edge logs go to CloudWatch as all Lambda logs.
+
+Remember to be used as Lambda@Edge Lambda functions must be in the `us-east-1` Region.
+
+While testing a Lambda from the Console (using the "Test" button), logs always go to `us-east-1` to a *Log Group* named `/aws/lambda/<function-name>`.
+
+When running on CloudFront, Lambda@Edge runs at Edge Locations. 
+Logs go to the Region of the Edge Location hit by the browser, to a *Log Group* named `/aws/lambda/us-east-1.<function-name>`.
+
+The actual Edge Location being used is not obvious and it is not necesarily the one closed to the client location. 
+It may also change from time to time and logs may end up in a different Region. For example connecting from London I usually hit an Edge Location in West London (LHR), but it happened to be randomly routed to Amsterdam (AMS). The result was logs were part in `eu-west-1` and others in `eu-central-1`.
+
+#### Switching Origin from Lambda@Edge
+
+If you dynamically change the Origin of a request, you also have to change the `Host` header in the request, to match the new origin S3 Bucket name.
+
+If the `Host` header does not match the actul Origin, CloudFront reject the request with an error: *“The request signature we calculated does not match the signature you provided”*
+
+Also, apparently Origin may ba changed only in *Origin Request* triggers, not in *Viewer Requests*. So the response get cached.
+Be sure to use a cache key that includes the element you used to decide the Origin.
+This bring to the following gotcha...
+
+#### Forwarded Cookies are part of CloudFront cache key
+
+When you forward Cookies to the Origin (part ot CF Distribution Behaviour settings), these cookies become part of the cache key of the object, along with the URI.
+Regardless the backend Origin is ignoring cookies (e.g. S3).
+
+If you are using a Cookie to decide the Origin, this cookie must be forwarded to the Origin as *Whitelist*.
+
+Never forward *All* cookies, or cache will become useless.
+
+#### Cache invalidation drops all versions of an object, regardless of forwarded cookie
+
+Even when the Distribution is set up to forward Cookies and use them as part of the cache key, you [cannot selectively invalidate a version of an object based on the cookie](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Invalidation.html#invalidation-specifying-objects-forwarding-cookies).
+Invalidation is based on object URI only.
+
+#### Headers are part of the cached content
+
+Response Headers returned by the Origin are cached along with the content.
+
+Headers added or modified by *Origin Response* Lambda@Edge functions will be cached.
+
+#### Wait for full propagation of the CloudFront Distribution before testing a change in Lambda@Edge
+
+While the Distribution is still propagating, you never know if you are triggering the old or newer version of a Lambda atteched a trigger.
+
+Wait for full propagation before any testing.
+
+This AWS CLI command may be useful to be sure the Distribution is settled down:
+```
+$ aws cloudfront wait distribution-deployed --id <distributionID> && echo READY
+``` 
