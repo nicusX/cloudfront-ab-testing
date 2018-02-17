@@ -43,25 +43,20 @@ By default, the main version is served, but Lambda@Edge may intercept requests a
 
 This is how serving a request works:
 
-1. The browser request hits CloudFront Edge location
-2. A *Viewer Request* Lambda@Edge function check if the `X-Cookie` is present. If not, rolls dice and dicides to decide which version and adds the cookie to the request, accordingly
-3. CloudFront Distribution decides whether it's a cache-it, including the `X-Cookie` in the cache key.
-4. A cache hit is served immediatly from the cache. It contains a `Set-Cookie` response header, in chase the browser doesn't have the cookie yet
-5. A cache miss is handed to the *Origin Request* Lambda@Edge function. If the `X-Cookie` target the Experiment, the Origin of the request is changed to the Experiment S3 Bucket, otherwise remain unchaged, pointing the Main S3 Bucket.
-6. The content is served by the selected Origin. S3 igores cookies
-7. The response (and the request) are passed to the *Origin Response* function, that adds a `Set-Cookie` response header to make it sure the browser will send the correct cookie on following requests and receives the same version on following requests
-8. The decorated response, including the `Set-Cookie` response header is cached by CloudFront Distribution
+![Request flow](docs/diagram.png)
+
+1. The browser request is directed to the closest CloudFront Edge location. The request may contain the `X-Source` cookie
+2. The *Viewer Request* Lambda@Edge function check if the `X-Source` cookie is present. If not, rolls dice and dicides to decide which version and adds the cookie to the request, accordingly.
+3. CloudFront Distribution decides whether it's a cache-it. The cache key is the object URI plus `X-Source` cookie.
+4. A cache hit is served immediatly from the cache. It contains a `Set-Cookie` response header, cached along with the content (see below).
+5. A cache miss is handed to the *Origin Request* Lambda@Edge function. If the `X-Source` target the Experiment, the Origin is changed to Experiment S3 Bucket, otherwise remain unchaged and goes to Main S3 Bucket.
+6. The content is served by the selected Origin. S3 igores cookies.
+7. The response (and the request) are passed back to the *Origin Response* Lambda@Edge function. It adds a `Set-Cookie` response header to make it sure the browser will send the correct cookie on following requests.
+8. The decorated response, that includes the `Set-Cookie` response header, is cached by CloudFront Distribution. The cache will eventually contains both versions of the content with the corresponding `Set-Cookie` header.
 9. The response is returned to the browser. 
-10. The browser set the cookie and send it on every new request
+10. The browser set the cookie and send it on every new request.
 
 
-```
-        (1) ---> [(2) Viewer Request ] ---> |       | --- miss --> [(5) Origin Request ] ----------
-                                            |  CDN  |                                              
-Browser <----------------- hit (4) -------- |       |                                               Origin
-                                            | cache |                                              
-  (10)  <--------------- (9) -------------- |       | (8) <--- [ Origin Response (7) ] <--- (6) ---                        
-```
 
 ### Further information
 * [Settings and configuration](docs/settings.md): more details about configurations.
