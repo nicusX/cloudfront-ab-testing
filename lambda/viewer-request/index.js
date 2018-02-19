@@ -8,8 +8,6 @@ const experimentTraffic = 0.5;
 // Viewer request handler
 // Look for Source cookie. If not present, roll dice, decide which source to use and add the Source cookie.
 // Source cookie must be forwarded to origin (whitelisted) so it is used as part of the cache key
-//
-// TODO Comment out verbose logging
 exports.handler = (event, context, callback) => {
     console.log('Received event:', JSON.stringify(event, null, 2));
 

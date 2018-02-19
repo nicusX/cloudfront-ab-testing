@@ -11,8 +11,6 @@ const cookiePath = '/';
 // Look for Source cookie in request and add Set-Cookie header to the response.
 // Remember: Source cookie may have been added to the request by the Origin Request lambda, and not coming from the browser
 // Source cookie must be forwarded to origin (whitelisted) so it is used as part of the cache key
-//
-// TODO Comment out verbose logging
 exports.handler = (event, context, callback) => {
     console.log('Received event:', JSON.stringify(event, null, 2));
    

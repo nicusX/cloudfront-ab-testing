@@ -46,7 +46,7 @@ This is how serving a request works:
 ![Request flow](docs/diagram.png)
 
 1. The browser request is directed to the closest CloudFront Edge location. The request may contain the `X-Source` cookie
-2. The *Viewer Request* Lambda@Edge function check if the `X-Source` cookie is present. If not, rolls dice and dicides to decide which version and adds the cookie to the request, accordingly.
+2. The *Viewer Request* Lambda@Edge function check if the `X-Source` cookie is present. If not, rolls dice and to decide which version and adds the cookie to the request, accordingly.
 3. CloudFront Distribution decides whether it's a cache-it. The cache key is the object URI plus `X-Source` cookie.
 4. A cache hit is served immediatly from the cache. It contains a `Set-Cookie` response header, cached along with the content (see below).
 5. A cache miss is handed to the *Origin Request* Lambda@Edge function. If the `X-Source` target the Experiment, the Origin is changed to Experiment S3 Bucket, otherwise remain unchaged and goes to Main S3 Bucket.
@@ -117,7 +117,7 @@ When running on CloudFront, Lambda@Edge runs at Edge Locations.
 Logs go to the Region of the Edge Location hit by the browser, to a *Log Group* named `/aws/lambda/us-east-1.<function-name>`.
 
 The actual Edge Location being used is not obvious and it is not necesarily the one closed to the client location. 
-It may also change from time to time and logs may end up in a different Region. For example connecting from London I usually hit an Edge Location in West London (LHR), but it happened to be randomly routed to Amsterdam (AMS). The result was logs were part in `eu-west-1` and others in `eu-central-1`.
+It may also change from time to time and logs may end up in a different Region. For example connecting from London I usually hit an Edge Location in West London (LHR), but it happened to be randomly routed to Amsterdam (AMS). The result was logs were part in `eu-west-2` and others in `eu-central-1`.
 
 #### Switching Origin from Lambda@Edge
 

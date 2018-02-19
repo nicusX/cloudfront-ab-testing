@@ -4,15 +4,13 @@ const sourceCoookie = 'X-Source';
 const sourceMain = 'main';
 const sourceExperiment = 'experiment';
 
-const experimentBucketName = 'ab-testing-poc-experiment.s3.amazonaws.com';
+const experimentBucketName = 'my-experiment.s3.amazonaws.com';
 const experimentBucketRegion = 'eu-west-1';
 
 // Origin Request handler
 // Switch Origin if request contains Experiment Source cookie
 // If no Source cookie is present or if Source cookie points to main, request is not changed: served as by default behavour, so by Main
 // Source cookie must be forwarded to origin (whitelisted) so it is used as part of the cache key
-//
-// TODO Comment out verbose logging
 exports.handler = (event, context, callback) => {
     console.log('Received event:', JSON.stringify(event, null, 2));
 
