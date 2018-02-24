@@ -3,22 +3,53 @@
 const sourceCoookie = 'X-Source';
 const sourceMain = 'main';
 const sourceExperiment = 'experiment';
+const experimentTraffic = 0.5;
 
-const experimentBucketName = 'my-experiment.s3.amazonaws.com';
+const experimentBucketEndpoint = 'my-experiment.s3.amazonaws.com';
 const experimentBucketRegion = 'eu-west-1';
 
 // Origin Request handler
-// Switch Origin if request contains Experiment Source cookie
-// If no Source cookie is present or if Source cookie points to main, request is not changed: served as by default behavour, so by Main
-// Source cookie must be forwarded to origin (whitelisted) so it is used as part of the cache key
+// 1) If the source cookie is not present, decide a source randomly and send back a redirect with Set-Cookie and Cache-Control=no-store
+// 2) If the source cookie is present and is 'experiment', change the orgin and host header to point the experiment bucket
+// 3) If the source cookie has any other value, forward the request as-is to the default origin (main)
 exports.handler = (event, context, callback) => {
     console.log('Received event:', JSON.stringify(event, null, 2));
 
     const request = event.Records[0].cf.request;
     const headers = request.headers;
 
-    // Decide source to use
-    const source = decideSource(headers);
+    // Look for source cookie
+    const source = getSource(headers);
+
+    // If Source is undecided roll dice and send directly a Redirect with the Set-Cookie and Cache-Control=no-store
+    if ( !source ) {
+        const newSource = ( Math.random() < experimentTraffic ) ? sourceExperiment : sourceMain;
+        console.log('Dice rolled. Source:', newSource);
+
+        // Send a redirect with Set-Cookie header and Cache-control no-store
+        const response = {
+            status: 302,
+            headers: {
+                'cache-control': [{
+                    key: 'Cache-Control',
+                    value: 'no-store' 
+                }],
+                'set-cookie': [{
+                    key: 'Set-Cookie',
+                    value: `${sourceCoookie}=${newSource}; Path=/`
+                }],
+                'location': [{
+                    key: 'Location',
+                    value: request.uri
+                }]
+            }
+        }
+
+        // Send response
+        console.log('Sending Response:', JSON.stringify(response, null, 2));
+        callback(null, response);
+        return;
+    }
 
     // If Source is Experiment, change Origin and Host header
     if ( source === sourceExperiment ) {
@@ -27,14 +58,14 @@ exports.handler = (event, context, callback) => {
         request.origin = {
             s3: {
                 authMethod: 'origin-access-identity',
-                domainName: experimentBucketName,
+                domainName: experimentBucketEndpoint,
                 path: '',
                 region: experimentBucketRegion    
             }
         };
 
         // Also set Host header to prevent “The request signature we calculated does not match the signature you provided” error
-        headers['host'] = [{key: 'host', value: experimentBucketName }];
+        headers['host'] = [{key: 'host', value: experimentBucketEndpoint }];
     }
     // No need to change anything if Source was Main or undefined
     
@@ -44,7 +75,7 @@ exports.handler = (event, context, callback) => {
 
 
 // Decide source based on source cookie.
-const decideSource = function(headers) {
+const getSource = function(headers) {
     const sourceMainCookie = `${sourceCoookie}=${sourceMain}`;
     const sourceExperimenCookie = `${sourceCoookie}=${sourceExperiment}`;
     

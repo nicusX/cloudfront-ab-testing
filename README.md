@@ -5,7 +5,6 @@ Example code for implementing A/B testing on CloudFront using Lambda@Edge.
 Particularly, switching between different versions of content is done by the CDN, as opposed to other solutions doing it client side, or server side. These solutions imply either modifying the client or server code. Something that might be not advisable or not possible,
 
 **This is not a complete solution**.
-
 Setup and deploy is manual, confifiguration is hardwired in Lambda function codes.
 
 ## Scenario
@@ -31,9 +30,10 @@ You do not want to have content randomly served from diferent versions at each r
 
 We want to keep the served version stable with a cookie, `X-Source` (but the cookie name may be changed). 
 As content is served by S3 bucket the cookie cannot be added by the server.
-So the idea is adding a `Set-Cookie` to every response.
+So, on the first request by a new client, we randomly decide a version and send a Redirect with a `Set-Cookie` header.
 
-CloudFront caches both versions of the content.
+We forward the cookie to the Origin, so CloudFront caches two versions of each object.
+To avoid requests without a cookie being cached (this happens on every first request from a new client), we add a `Cache-Control=no-store` header to only the response setting the cookie.
 
 Note that the solutions suggested by [this example](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/lambda-examples.html#lambda-examples-a-b-testing) and [this example](https://aws.amazon.com/blogs/networking-and-content-delivery/dynamically-route-viewer-requests-to-any-origin-using-lambdaedge/) require something external to set the cookie that decides the version. 
 Otherwise, every request may get a different version of the content.
@@ -41,27 +41,118 @@ Otherwise, every request may get a different version of the content.
 CloudFront has two Origins, one for the main version and another for the experiment.
 By default, the main version is served, but Lambda@Edge may intercept requests and switch to a different Origin.
 
+
 This is how serving a request works:
 
-![Request flow](docs/diagram.png)
+1. A new client access lands on the website. The browser request is directed to the closest CloudFront Edge location. The request does not contain the `X-Source` cookie.
+2. This is a cache miss, so the request is forwarded to the Origin, but *Origin Request* function is invoked before reaching the Origin.
+3. The function looks for `X-Source` cookie. Not finding it, it rolls dice and randomly decide which version to send the client to and immediately sends a Redirect response (to the same URL) adding a `Set-Cookie` header. To avoid this response being cached, it also adds a `Cache-Control=no-store` header.
+4. The browser returns, redirected to the same URL. Not it has the `X-Source` cookie. The cookie is forwarded so part of the cache-key. If someone else has requested the same version of the same object recently, this may be a cache-hit and the response is immediately returned from the cache at the Edge.
+5. If this is not a cache-hit, the request is forwarded to the Origin, passing through the *Origin Request* function.
+6. The *Origin Request* function looks for `X-Source` cookie. Finding it, the version is decided: no die rolling needed. If the required cookie is set to *main*, no action is required and the request is forwarded to the *main* bucket. If the cookie is set to *experiment*, the request Origin is changed and forwarded to the *experiment* bucket.
+7. The response coming from either bucket is cached. The cache key is the object URI along with nd the forwarded `X-Source` cookie. So two separate versions of the same object are cached.
 
-1. The browser request is directed to the closest CloudFront Edge location. The request may contain the `X-Source` cookie
-2. The *Viewer Request* Lambda@Edge function check if the `X-Source` cookie is present. If not, rolls dice and to decide which version and adds the cookie to the request, accordingly.
-3. CloudFront Distribution decides whether it's a cache-it. The cache key is the object URI plus `X-Source` cookie.
-4. A cache hit is served immediatly from the cache. It contains a `Set-Cookie` response header, cached along with the content (see below).
-5. A cache miss is handed to the *Origin Request* Lambda@Edge function. If the `X-Source` target the Experiment, the Origin is changed to Experiment S3 Bucket, otherwise remain unchaged and goes to Main S3 Bucket.
-6. The content is served by the selected Origin. S3 igores cookies.
-7. The response (and the request) are passed back to the *Origin Response* Lambda@Edge function. It adds a `Set-Cookie` response header to make it sure the browser will send the correct cookie on following requests.
-8. The decorated response, that includes the `Set-Cookie` response header, is cached by CloudFront Distribution. The cache will eventually contains both versions of the content with the corresponding `Set-Cookie` header.
-9. The response is returned to the browser. 
-10. The browser set the cookie and send it on every new request.
+### The lambda function
 
 
 
-### Further information
-* [Settings and configuration](docs/settings.md): more details about configurations.
-* [Lambda functions](docs/lambda-functions.md): more details about functions.
-* [Switching A/B testing on and off](docs/switching-testing.md): how to switch on and off A/B testing in production, without impacting users.
+The [function](lambda/originRequest.js) uses Node.js.
+It has a single handler to be attached to the *Origin Request* Behaviour of the CloudFront Distribution.
+
+The function must be published with a numbered version (no `$LATEST`).
+
+The function must be in `us-east-1` Region to be attached to CloudFront.
+
+Everything is hardwired in the function code: the name of the cookie, the endpoint of the *Experiment* bucket and the fraction of traffic to be forwarded there. This is not by mistake, unfortunately. Lambda@Edge does not support passing parameters to function as runtime environment, so any parameter must be hardwired.
+In the real world you should use some form of template engine at build time, injecting parameters in function code before deploying.
+
+
+## Setup and configuration
+
+### CloudFront 
+
+Two Origins: `main` and `experiment`, pointing to two separate S3 buckets.
+
+Origin names are irrelevant. They do not need to match with names used in `X-Source` cookie.
+
+
+*Default(*)* behaviour:  
+* Forward Cookies: Customize, Whitelist (`X-Source`)
+* Cache based on Selected Request Headers: None
+
+Forwarding `X-Source` has two effects:
+- Forwards it to the Origin. S3 actually ignores it.
+- **Makes the `X-Source` cookie part of the cache key**, along with the object URI
+
+Other Behaviour settings are not relevant. 
+
+Cache TTL may be set to any value.
+
+*Default(*)* behaviour also associates the `Origin Request` event to the Lambda functions.
+
+#### Additional, optional settings
+
+I'm currently using these additional settings:
+
+* *Alternate Domain Names (CNAMEs)* pointing a custom domain
+* Custom SSL certificate for the custom domain, served by AWS Certificate Manager
+* Default Root Object: `index.html`
+* Logging on S3 bucket
+* Restrict access to both S3 Origins using an *Origin Access Identity*. Don't forget to set S3 Bucket Policy accordingly
+* Default behaviour: Redirects HTTP to HTTPS
+
+
+### Lambda
+
+Load the Lambda function normally, in `us-east-1` Region.
+
+Publish the function to a numbered version.
+
+Set tjhe
+
+#### Execution Role
+
+IAM Role for Lambda execution.
+
+Assign Policy `AWSLambdaBasicExecutionRole` 
+or add the following custom policy:
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+The Role must also have a `AssumeRolePolicyDocument` (Trust relationship) to allow both `lambda.amazonaws.com` and `edgelambda.amazonaws.com` services to assume the Role:
+```
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": [
+          "edgelambda.amazonaws.com",
+          "lambda.amazonaws.com"
+        ]
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+
 
 ## Useful docs and examples
 
@@ -74,7 +165,7 @@ Documentation is quite sparse. Examples are naive...
 * [How to supercharge your static website with the power of AWS Lambda@Edge](https://read.acloud.guru/supercharging-a-static-site-with-lambda-edge-da5a1314238b)
 
 
-## Known issue of Lamnda@Edge
+## Known issue with Lamnda@Edge
 
 [Replicated Lambda@Edge cannot be deleted](https://forums.aws.amazon.com/thread.jspa?threadID=260242) (i.e. Lambda associated with CloudFront Distributions as Lambda@Edge).
 
@@ -83,7 +174,7 @@ I saw it takes between 30 mins to 24 hours and AFAIK there is no way of checking
 
 Note that this issue practically prevents from using any stateful infrastructure automation tool to deploy Lamda@Edge, like [Terraform](https://github.com/terraform-providers/terraform-provider-aws/issues/1721), unless you completely separate deployment of Lambda function and attaching them to CloudFront triggers.
 
-## Some gotchas!
+## Gotchas!
 
 At the time of writing (15-Feb-2018) the documentation about Lambda@Edge is very sparse, to use an euphemisim, and all examples are trivial.
 
