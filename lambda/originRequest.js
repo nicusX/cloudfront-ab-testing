@@ -5,8 +5,29 @@ const sourceMain = 'main';
 const sourceExperiment = 'experiment';
 const experimentTraffic = 0.5;
 
-const experimentBucketEndpoint = 'my-experiment.s3.amazonaws.com';
+const experimentBucketEndpoint = 'my-experiment.s3.amazonaws.com'; // S3 bucket origin
+// const experimentBucketEndpoint = 'my-experiment.s3-website-eu-west-1.amazonaws.com'; // Custom origin
 const experimentBucketRegion = 'eu-west-1';
+
+/* S3 Origin */
+const experimentOrigin = {
+    s3: {
+        authMethod: 'origin-access-identity',
+        domainName: experimentBucketEndpoint,
+        path: '',
+        region: experimentBucketRegion    
+    }    
+}
+
+/* Custom Origin */
+// const experimentOrigin = {
+//     custom: {
+//         domainName: experimentBucketEndpoint,
+//         port: 80,
+//         protocol: 'http',
+//         path: ''
+//     }
+// }
 
 // Origin Request handler
 // 1) If the source cookie is not present, decide a source randomly and send back a redirect with Set-Cookie and Cache-Control=no-store
@@ -55,14 +76,7 @@ exports.handler = (event, context, callback) => {
     if ( source === sourceExperiment ) {
         console.log('Setting Origin to experiment bucket');
         // Specify Origin
-        request.origin = {
-            s3: {
-                authMethod: 'origin-access-identity',
-                domainName: experimentBucketEndpoint,
-                path: '',
-                region: experimentBucketRegion    
-            }
-        };
+        request.origin = experimentOrigin;
 
         // Also set Host header to prevent “The request signature we calculated does not match the signature you provided” error
         headers['host'] = [{key: 'host', value: experimentBucketEndpoint }];
