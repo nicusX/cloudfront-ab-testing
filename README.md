@@ -72,11 +72,13 @@ In the real world you should use some form of template engine at build time, inj
 ### CloudFront 
 
 Two Origins: `main` and `experiment`, pointing to two separate S3 buckets.
+Origin may use "native" *S3* origin or *Custom* origin to the buckets. The sample code works for *S3* Origin, but the changes for using *Custom* origin are commented out.
 
 Origin names are irrelevant. They do not need to match with names used in `X-Source` cookie.
 
 
 *Default(*)* behaviour:  
+* Origin: `main`
 * Forward Cookies: Customize, Whitelist (`X-Source`)
 * Cache based on Selected Request Headers: None
 
@@ -107,8 +109,6 @@ I'm currently using these additional settings:
 Load the Lambda function normally, in `us-east-1` Region.
 
 Publish the function to a numbered version.
-
-Set tjhe
 
 #### Execution Role
 

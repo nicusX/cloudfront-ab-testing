@@ -5,9 +5,13 @@ const sourceMain = 'main';
 const sourceExperiment = 'experiment';
 const experimentTraffic = 0.5;
 
-const experimentBucketEndpoint = 'my-experiment.s3.amazonaws.com'; // S3 bucket origin
-// const experimentBucketEndpoint = 'my-experiment.s3-website-eu-west-1.amazonaws.com'; // Custom origin
 const experimentBucketRegion = 'eu-west-1';
+
+// S3 Origin endpoint
+const experimentBucketEndpoint = 'my-experiment.s3.amazonaws.com';
+
+// Custom Origin (S3 Static Website Hosting) endpoint
+// const experimentBucketEndpoint = 'my-experiment.s3-website-eu-west-1.amazonaws.com';
 
 /* S3 Origin */
 const experimentOrigin = {
@@ -25,7 +29,11 @@ const experimentOrigin = {
 //         domainName: experimentBucketEndpoint,
 //         port: 80,
 //         protocol: 'http',
-//         path: ''
+//         path: '',
+//         readTimeout: 5,
+//         keepaliveTimeout: 5,
+//         sslProtocols: ['TLSv1', 'TLSv1.1'],
+//         customHeaders: {}
 //     }
 // }
 
